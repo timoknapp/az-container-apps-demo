@@ -55,17 +55,12 @@ resource log_workspace_resource 'Microsoft.OperationalInsights/workspaces@2021-1
 }
 
 resource containerApp_resource 'Microsoft.App/containerapps@2022-10-01' = {
-  identity: {
-    type: 'None'
-  }
-  location: location
   name: containerApp_name
+  location: location
   properties: {
     configuration: {
-      activeRevisionsMode: 'Single'
       ingress: {
         allowInsecure: true
-        exposedPort: 0
         external: true
         targetPort: 80
         traffic: [
@@ -74,19 +69,37 @@ resource containerApp_resource 'Microsoft.App/containerapps@2022-10-01' = {
             weight: 100
           }
         ]
-        transport: 'Auto'
       }
     }
-    environmentId: containerApps_env_resource.id
     managedEnvironmentId: containerApps_env_resource.id
     template: {
       containers: [
         {
-          image: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           name: containerApp_name
+          image: 'mcr.microsoft.com/azuredocs/azure-vote-front:v1'
+          env: [
+            {
+              name: 'REDIS'
+              value: 'localhost'
+            }
+          ]
           resources: {
-            cpu: '0.5'
-            memory: '1Gi'
+            cpu: json('.25')
+            memory: '.5Gi'
+          }
+        }
+        {
+          name: 'redis'
+          image: 'mcr.microsoft.com/oss/bitnami/redis:6.0.8'
+          env: [
+            {
+              name: 'ALLOW_EMPTY_PASSWORD'
+              value: 'yes'
+            }
+          ]
+          resources: {
+            cpu: json('.25')
+            memory: '.5Gi'
           }
         }
       ]
@@ -94,6 +107,16 @@ resource containerApp_resource 'Microsoft.App/containerapps@2022-10-01' = {
       scale: {
         maxReplicas: 3
         minReplicas: 1
+        rules: [
+          {
+            name: 'http-requests'
+            http: {
+              metadata: {
+                concurrentRequests: '10'
+              }
+            }
+          }
+        ]
       }
     }
   }
@@ -344,24 +367,6 @@ resource nsg_appGw_resource 'Microsoft.Network/networkSecurityGroups@2022-07-01'
   properties: {
     securityRules: [
       {
-        name: 'AllowAnyHTTPInbound'
-        properties: {
-          access: 'Allow'
-          destinationAddressPrefix: '*'
-          destinationAddressPrefixes: []
-          destinationPortRange: '80'
-          destinationPortRanges: []
-          direction: 'Inbound'
-          priority: 100
-          protocol: 'TCP'
-          sourceAddressPrefix: '*'
-          sourceAddressPrefixes: []
-          sourcePortRange: '*'
-          sourcePortRanges: []
-        }
-        type: 'Microsoft.Network/networkSecurityGroups/securityRules'
-      }
-      {
         name: 'GatewayManager'
         properties: {
           access: 'Allow'
@@ -370,13 +375,32 @@ resource nsg_appGw_resource 'Microsoft.Network/networkSecurityGroups@2022-07-01'
           destinationPortRange: '65200-65535'
           destinationPortRanges: []
           direction: 'Inbound'
-          priority: 2702
+          priority: 100
           protocol: '*'
           sourceAddressPrefix: 'GatewayManager'
           sourceAddressPrefixes: []
           sourcePortRange: '*'
           sourcePortRanges: []
         }
+        type: 'Microsoft.Network/networkSecurityGroups/securityRules'
+      }
+      {
+        name: 'AllowAnyHTTPInbound'
+        properties: {
+          access: 'Allow'
+          destinationAddressPrefix: '*'
+          destinationAddressPrefixes: []
+          destinationPortRange: '80'
+          destinationPortRanges: []
+          direction: 'Inbound'
+          priority: 120
+          protocol: 'TCP'
+          sourceAddressPrefix: '*'
+          sourceAddressPrefixes: []
+          sourcePortRange: '*'
+          sourcePortRanges: []
+        }
+        type: 'Microsoft.Network/networkSecurityGroups/securityRules'
       }
     ]
   }
